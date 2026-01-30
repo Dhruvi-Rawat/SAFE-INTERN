@@ -1,157 +1,47 @@
 # agents/payment_agent.py
 """
-Payment agent for SAFE-INTERN using CrewAI.
+Payment agent for SAFE-INTERN (Rule-based).
 
-Responsibilities:
-- Detect mentions of payment or fees
-- Identify upfront payment requests
-- Extract mentioned payment amounts (if any)
-- Report observations in neutral, advisory language
+Detects:
+- Payment mentions
+- Upfront payment requests
+- Amount mentions
+- Pressure language
 
-NO risk scoring
-NO accusations
-NO assumptions
+NO LLM
+NO CrewAI
 """
 
-from typing import Dict, Any, List
 import re
 
-from crewai import Agent
-from crewai.tasks import Task
-
-
-# ---------- KEYWORDS ----------
-
 PAYMENT_KEYWORDS = [
-    "fee",
-    "fees",
-    "payment",
-    "pay",
-    "deposit",
-    "registration",
-    "training fee",
-    "processing fee",
-    "joining fee",
-    "course fee"
+    "fee", "payment", "deposit", "registration", "charges",
+    "training fee", "joining fee", "processing fee"
 ]
 
 UPFRONT_KEYWORDS = [
-    "before joining",
-    "prior to joining",
-    "advance payment",
-    "pay first",
-    "initial payment",
-    "upfront",
-    "pay now",
-    "required to pay"
+    "before joining", "pay first", "upfront",
+    "immediate payment", "pay now"
 ]
 
 
-# ---------- CREWAI AGENT ----------
+def run_payment_agent(intake_data: dict) -> dict:
+    text = intake_data.get("clean_text", "").lower()
+    observations = []
 
-agent = Agent(
-    role="Payment Pattern Analyst",
-    goal="Identify payment-related patterns in internship communications",
-    backstory=(
-        "You analyze internship-related messages to identify mentions of "
-        "fees or payments. You report factual observations without making "
-        "judgments or accusations."
-    ),
-    allow_delegation=False,
-    verbose=False
-)
+    if any(k in text for k in PAYMENT_KEYWORDS):
+        observations.append("Payment mentioned in the communication")
 
+    if any(k in text for k in UPFRONT_KEYWORDS):
+        observations.append("Payment appears to be requested before internship starts")
 
-# ---------- HELPER FUNCTIONS ----------
+    amount_match = re.search(r"(₹|rs\.?|inr|\$)\s?\d+", text)
+    if amount_match:
+        observations.append("Specific payment amount mentioned")
 
-def detect_payment_mentions(text: str) -> bool:
-    """Check if any payment-related keyword is present"""
-    text_lower = text.lower()
-    return any(keyword in text_lower for keyword in PAYMENT_KEYWORDS)
-
-
-def detect_upfront_payment(text: str) -> bool:
-    """Check if payment is requested before joining"""
-    text_lower = text.lower()
-    return any(keyword in text_lower for keyword in UPFRONT_KEYWORDS)
-
-
-def extract_payment_amount(text: str) -> str | None:
-    """
-    Extract payment amount if mentioned.
-    Examples: ₹5000, Rs. 3000, 1000 INR
-    """
-    patterns = [
-        r"₹\s?\d+",
-        r"rs\.?\s?\d+",
-        r"\d+\s?inr"
-    ]
-
-    text_lower = text.lower()
-    for pattern in patterns:
-        match = re.search(pattern, text_lower)
-        if match:
-            return match.group().upper()
-
-    return None
-
-
-# ---------- MAIN ANALYSIS ----------
-
-def analyze_payment(intake_data: Dict[str, Any]) -> Dict[str, Any]:
-    observations: List[str] = []
-
-    text = intake_data.get("clean_text", "")
-
-    payment_mentioned = detect_payment_mentions(text)
-    upfront_payment = detect_upfront_payment(text)
-    payment_amount = extract_payment_amount(text)
-
-    if payment_mentioned:
-        observations.append("The communication mentions payment or fees.")
-    else:
-        observations.append("No payment or fee-related language was detected.")
-
-    if upfront_payment:
-        observations.append(
-            "Payment appears to be requested before internship commencement."
-        )
-
-    if payment_amount:
-        observations.append(
-            f"A specific payment amount was mentioned ({payment_amount})."
-        )
+    if not observations:
+        observations.append("No unusual payment patterns detected")
 
     return {
-        "payment_mentioned": payment_mentioned,
-        "upfront_payment": upfront_payment,
-        "payment_amount": payment_amount,
         "observations": observations
     }
-
-
-# ---------- TASK CREATION ----------
-
-def create_task(intake_data: Dict[str, Any]) -> Task:
-    analysis = analyze_payment(intake_data)
-
-    description = f"""
-Analyze the following internship communication for payment-related patterns.
-
-Observations:
-{chr(10).join(f"- {o}" for o in analysis['observations'])}
-
-Rules:
-- Be factual and neutral
-- Do NOT accuse or confirm fraud
-- Do NOT assign any score
-"""
-
-    return Task(
-        description=description,
-        agent=agent,
-        expected_output=(
-            "A neutral summary describing whether payment or fee-related "
-            "language was present and whether upfront payment was requested."
-        )
-    )

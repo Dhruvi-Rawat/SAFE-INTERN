@@ -9,21 +9,14 @@ Responsibilities:
 """
 
 from typing import Dict, Any, List
+
 from agents import company_agent
-# Import agent modules (NOT CrewAI agents)
 from agents import payment_agent
 from agents import behavior_agent
 from agents import ml_agent
 
 
-# ---------- AGENT SELECTION LOGIC ----------
-
 def decide_agents(intake_data: Dict[str, Any]) -> List[str]:
-    """
-    Decide which agents should be executed.
-    Deterministic logic only (NO LLM).
-    """
-
     agents_to_run = ["company", "behavior", "ml"]
 
     if intake_data.get("payment_mentions"):
@@ -32,29 +25,15 @@ def decide_agents(intake_data: Dict[str, Any]) -> List[str]:
     return agents_to_run
 
 
-# ---------- EXECUTION ----------
-
 def run_planner(intake_schema) -> Dict[str, Any]:
-    """
-    Execute selected agents and return structured outputs.
-
-    Args:
-        intake_schema: IntakeSchema OR dict
-
-    Returns:
-        Dict[str, Any]: agent_name -> result
-    """
-
-    # ✅ Normalize intake
-    if hasattr(intake_schema, "dict"):
-        intake_data = intake_schema.dict()
-    elif hasattr(intake_schema, "to_dict"):
+    if hasattr(intake_schema, "to_dict"):
         intake_data = intake_schema.to_dict()
+    elif hasattr(intake_schema, "dict"):
+        intake_data = intake_schema.dict()
     else:
         intake_data = intake_schema
 
     selected_agents = decide_agents(intake_data)
-
     results: Dict[str, Any] = {}
 
     if "company" in selected_agents:
