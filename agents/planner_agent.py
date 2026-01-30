@@ -1,49 +1,27 @@
 # agents/planner_agent.py
 """
-Planner agent for SAFE-INTERN using CrewAI.
+Planner agent for SAFE-INTERN.
 
 Responsibilities:
 - Decide which analysis agents should run
-- Orchestrate agent execution order
-- Return aggregated agent outputs (no scoring here)
+- Execute selected agents deterministically
+- Return structured agent outputs (NO scoring here)
 """
 
 from typing import Dict, Any, List
-
-from crewai import Agent, Task, Crew
-
-from agents.company_agent import company_agent
-from agents.payment_agent import payment_agent
-from agents.behavior_agent import behavior_agent
-from agents.ml_agent import ml_agent
+from agents import company_agent
+# Import agent modules (NOT CrewAI agents)
+from agents import payment_agent
+from agents import behavior_agent
+from agents import ml_agent
 
 
-# ---------- PLANNER AGENT ----------
-
-planner_agent = Agent(
-    role="Analysis Planner",
-    goal="Decide which agents to run for internship risk analysis",
-    backstory=(
-        "You are responsible for orchestrating a multi-agent analysis system. "
-        "You do not analyze risk yourself, but decide which specialized agents "
-        "should run based on available intake data."
-    ),
-    allow_delegation=True,
-    verbose=False
-)
-
-
-# ---------- PLANNER LOGIC (DETERMINISTIC) ----------
+# ---------- AGENT SELECTION LOGIC ----------
 
 def decide_agents(intake_data: Dict[str, Any]) -> List[str]:
     """
     Decide which agents should be executed.
-
-    Args:
-        intake_data: Structured IntakeSchema as dict
-
-    Returns:
-        List of agent identifiers
+    Deterministic logic only (NO LLM).
     """
 
     agents_to_run = ["company", "behavior", "ml"]
@@ -58,42 +36,37 @@ def decide_agents(intake_data: Dict[str, Any]) -> List[str]:
 
 def run_planner(intake_schema) -> Dict[str, Any]:
     """
-    Run planner and execute selected agents.
+    Execute selected agents and return structured outputs.
 
     Args:
-        intake_schema: IntakeSchema object
+        intake_schema: IntakeSchema OR dict
 
     Returns:
-        Dictionary of agent results
+        Dict[str, Any]: agent_name -> result
     """
 
-    intake_dict = intake_schema.to_dict()
-    selected_agents = decide_agents(intake_dict)
+    # ✅ Normalize intake
+    if hasattr(intake_schema, "dict"):
+        intake_data = intake_schema.dict()
+    elif hasattr(intake_schema, "to_dict"):
+        intake_data = intake_schema.to_dict()
+    else:
+        intake_data = intake_schema
 
-    tasks = []
-    agents = []
+    selected_agents = decide_agents(intake_data)
+
+    results: Dict[str, Any] = {}
 
     if "company" in selected_agents:
-        tasks.append(company_agent.create_task(intake_dict))
-        agents.append(company_agent.agent)
+        results["company"] = company_agent.run_company_agent(intake_data)
 
     if "payment" in selected_agents:
-        tasks.append(payment_agent.create_task(intake_dict))
-        agents.append(payment_agent.agent)
+        results["payment"] = payment_agent.run_payment_agent(intake_data)
 
     if "behavior" in selected_agents:
-        tasks.append(behavior_agent.create_task(intake_dict))
-        agents.append(behavior_agent.agent)
+        results["behavior"] = behavior_agent.run_behavior_agent(intake_data)
 
     if "ml" in selected_agents:
-        tasks.append(ml_agent.create_task(intake_dict))
-        agents.append(ml_agent.agent)
+        results["ml"] = ml_agent.run_ml_analysis(intake_data)
 
-    crew = Crew(
-        agents=agents,
-        tasks=tasks,
-        verbose=False
-    )
-
-    results = crew.kickoff()
     return results

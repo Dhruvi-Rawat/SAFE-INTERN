@@ -1,83 +1,113 @@
-# intake/input_router.py
+# intake/schema.py
 """
-Routes user input to the correct extractor
-and returns raw text for intake processing.
+Intake schema for SAFE-INTERN.
 
-Supported input types:
-- Plain text
-- PDF files
-- URLs
-
-Purpose:
-- Centralized input routing
-- Minimal validation
-- Basic normalization only
+Responsibilities:
+- Define strict structure for intake output
+- Validate required fields
+- Normalize missing optional fields
 """
 
-from typing import Optional, Tuple, Dict
-
-from utils.pdf_parser import extract_text_from_pdf     # PDF extraction
-from utils.url_fetcher import fetch_text_from_url      # URL content fetch
-from utils.text_cleaner import basic_clean_text        # Minimal cleaning
+from dataclasses import dataclass
+from typing import List, Dict, Any, Optional
 
 
-MAX_TEXT_LENGTH = 50000  # safety limit
+@dataclass
+class IntakeSchema:
+    # Core
+    clean_text: str
+
+    # Company / contact
+    company_name: Optional[str]
+    contact_person: Optional[str]
+    email: Optional[str]
+    phone: Optional[str]
+    website: Optional[str]
+    social_media: List[str]
+
+    # Job info
+    job_title: Optional[str]
+    job_description: Optional[str]
+    location: Optional[str]
+    duration: Optional[str]
+    compensation: Optional[str]
+    start_date: Optional[str]
+
+    # Indicators
+    payment_mentions: bool
+    payment_required: bool
+    payment_amount: Optional[str]
+
+    urgency_mentions: bool
+    urgency_phrases: List[str]
+
+    interview_process_described: bool
+    communication_channels: List[str]
+
+    # Analysis helpers
+    missing_information: List[str]
+    unusual_patterns: Dict[str, bool]
+    entities: Dict[str, List[str]]
+
+    # Metadata
+    input_length: int
+    language_detected: Optional[str]
+
+    def to_dict(self) -> Dict[str, Any]:
+        return self.__dict__
 
 
-def route_input(
-    text_input: Optional[str] = None,
-    pdf_file: Optional[bytes] = None,
-    url: Optional[str] = None,
-    return_metadata: bool = False
-) -> str | Tuple[str, Dict]:
+# ------------------------------------------------------------------
+# BUILDER
+# ------------------------------------------------------------------
+
+def build_intake_schema(data: Dict[str, Any]) -> IntakeSchema:
     """
-    Determine input type and extract raw text.
-
-    Args:
-        text_input: Direct text entered by user
-        pdf_file: Uploaded PDF file (bytes)
-        url: URL provided by user
-        return_metadata: If True, return (text, metadata)
-
-    Returns:
-        Cleaned text OR (cleaned text, metadata)
-
-    Raises:
-        ValueError: If no valid input is provided
+    Build IntakeSchema safely from dict.
     """
 
-    raw_text = ""
-    metadata = {}
+    required_keys = [
+        "clean_text",
+        "payment_mentions",
+        "urgency_mentions",
+        "input_length"
+    ]
 
-    # ---------- TEXT INPUT ----------
-    if text_input and text_input.strip():
-        raw_text = text_input.strip()
-        metadata["input_type"] = "text"
+    for key in required_keys:
+        if key not in data:
+            raise ValueError(f"Missing required intake field: {key}")
 
-        if len(raw_text) > MAX_TEXT_LENGTH:
-            raise ValueError("Text input too long")
+    return IntakeSchema(
+        clean_text=data["clean_text"],
 
-    # ---------- PDF INPUT ----------
-    elif pdf_file:
-        raw_text = extract_text_from_pdf(pdf_file)
-        metadata["input_type"] = "pdf"
-        metadata["file_size_bytes"] = len(pdf_file)
+        company_name=data.get("company_name"),
+        contact_person=data.get("contact_person"),
+        email=data.get("email"),
+        phone=data.get("phone"),
+        website=data.get("website"),
+        social_media=data.get("social_media", []),
 
-    # ---------- URL INPUT ----------
-    elif url and url.strip():
-        raw_text = fetch_text_from_url(url.strip())
-        metadata["input_type"] = "url"
-        metadata["url"] = url.strip()
+        job_title=data.get("job_title"),
+        job_description=data.get("job_description"),
+        location=data.get("location"),
+        duration=data.get("duration"),
+        compensation=data.get("compensation"),
+        start_date=data.get("start_date"),
 
-    else:
-        raise ValueError("No valid input provided")
+        payment_mentions=data.get("payment_mentions", False),
+        payment_required=data.get("payment_required", False),
+        payment_amount=data.get("payment_amount"),
 
-    # ---------- BASIC CLEANING ----------
-    # This is NOT NLP cleaning, only normalization
-    clean_text = basic_clean_text(raw_text)
+        urgency_mentions=data.get("urgency_mentions", False),
+        urgency_phrases=data.get("urgency_phrases", []),
 
-    if return_metadata:
-        metadata["text_length"] = len(clean_text)
-        return clean_text, metadata
+        interview_process_described=data.get("interview_process_described", False),
+        communication_channels=data.get("communication_channels", []),
 
-    return clean_text
+        missing_information=data.get("missing_information", []),
+        unusual_patterns=data.get("unusual_patterns", {}),
+        entities=data.get("entities", {}),
+
+        input_length=data.get("input_length", len(data.get("clean_text", ""))),
+        language_detected=data.get("language_detected")
+    )

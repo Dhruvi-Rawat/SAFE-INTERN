@@ -21,8 +21,8 @@ from urllib.parse import urlparse
 import requests
 from bs4 import BeautifulSoup
 
-from crewai import Agent
-from crewai.tasks import Task
+from crewai import Agent,Task
+
 
 
 # ---------- CONSTANTS ----------

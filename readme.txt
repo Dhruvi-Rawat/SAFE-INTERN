@@ -27,7 +27,7 @@ safe_intern/
 │   ├── prompts.py                  # LLM intake system prompts
 │   └── guardrail_words.py          # Forbidden words (scam, fraud, fake)
 │
-├── intake/                         # 🔥 LLM-FIRST INPUT HANDLING
+├── intake/                         # LLM-FIRST INPUT HANDLING
 │   ├── intake_agent.py             # LLM parses & structures raw input
 │   ├── input_router.py             # Routes text / PDF / URL input
 │   └── schema.py                   # Structured JSON schema

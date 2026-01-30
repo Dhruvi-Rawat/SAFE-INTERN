@@ -1,37 +1,43 @@
 # Central configuration for SAFE-INTERN
 
 # ---------- RISK SCORE LIMITS ----------
-TOTAL_MAX_SCORE = 100                 # Final score upper bound
-RULE_BASED_MAX_SCORE = 80              # Max from rule-based agents
-ML_MAX_SCORE = 20                      # Max from ML agent
+TOTAL_MAX_SCORE = 100
+RULE_BASED_MAX_SCORE = 80
+ML_MAX_SCORE = 20
 
 # ---------- RISK CATEGORY THRESHOLDS ----------
-LOW_RISK_THRESHOLD = 30                # 0–30 → Low
-CAUTION_RISK_THRESHOLD = 60            # 31–60 → Caution
-HIGH_RISK_THRESHOLD = 100              # 61–100 → High indicators
+LOW_RISK_THRESHOLD = 30
+CAUTION_RISK_THRESHOLD = 60
+HIGH_RISK_THRESHOLD = 100
+
+RISK_LABELS = {
+    "low": "Low Risk Indicators",
+    "medium": "Caution Advised",
+    "high": "High Risk Indicators"
+}
 
 # ---------- AGENT SCORE CAPS ----------
-COMPANY_AGENT_MAX_SCORE = 40           # Company legitimacy impact
-PAYMENT_AGENT_MAX_SCORE = 30           # Payment detection impact
-BEHAVIOR_AGENT_MAX_SCORE = 30          # Urgency & manipulation impact
+COMPANY_AGENT_MAX_SCORE = 40
+PAYMENT_AGENT_MAX_SCORE = 30
+BEHAVIOR_AGENT_MAX_SCORE = 30
 
 # ---------- ML SETTINGS ----------
-ML_SCORE_SCALING = 20                  # Probability × 20
-ML_MODEL_PATH = "ml/model.pkl"         # Saved ML model
-ML_VECTORIZER_PATH = "ml/vectorizer.pkl"  # Saved TF-IDF vectorizer
+ML_SCORE_SCALING = 20  # Used only if probability-based ML scoring is enabled
+ML_MODEL_PATH = "ml/model.pkl"
+ML_VECTORIZER_PATH = "ml/vectorizer.pkl"
 
 # ---------- DATABASE ----------
-DATABASE_PATH = "database/safe_intern.db"  # SQLite DB location
+DATABASE_PATH = "database/safe_intern.db"
 
 # ---------- LLM SETTINGS (CREWAI + OPENROUTER) ----------
-LLM_ENABLED = True                     # Enable LLM for intake processing
-LLM_PROVIDER = "openrouter"            # LLM provider
-LLM_MODEL_NAME = "mistralai/mistral-7b-instruct"  # Free-tier friendly model
-LLM_TEMPERATURE = 0.0                  # Deterministic output
-LLM_MAX_TOKENS = 512                   # Output size limit
-LLM_TIMEOUT = 10                       # Timeout in seconds
-LLM_JSON_ONLY = True                   # Enforce JSON-only output
+LLM_ENABLED = True
+LLM_PROVIDER = "openrouter"
+LLM_MODEL_NAME = "mistralai/mistral-7b-instruct"
+LLM_TEMPERATURE = 0.0
+LLM_MAX_TOKENS = 512
+LLM_TIMEOUT = 15
+LLM_JSON_ONLY = True
 
 # ---------- GENERAL ----------
-DEFAULT_LANGUAGE = "en"                # Supported language
-WEB_REQUEST_TIMEOUT = 5                # Seconds
+DEFAULT_LANGUAGE = "en"
+WEB_REQUEST_TIMEOUT = 5
