@@ -1,51 +1,43 @@
-# agents/planner_agent.py
-"""
-Planner agent for SAFE-INTERN.
-
-Responsibilities:
-- Decide which analysis agents should run
-- Execute selected agents deterministically
-- Return structured agent outputs (NO scoring here)
-"""
-
-from typing import Dict, Any, List
-
-from agents import company_agent
-from agents import payment_agent
-from agents import behavior_agent
-from agents import ml_agent
+from agents import company_agent, payment_agent, behavior_agent
+from agents.ml_agent import MLAgent
 
 
-def decide_agents(intake_data: Dict[str, Any]) -> List[str]:
-    agents_to_run = ["company", "behavior", "ml"]
+# -----------------------
+# Helper: convert schema → dict
+# -----------------------
+def _to_dict(obj):
+    if hasattr(obj, "model_dump"):   # pydantic v2
+        return obj.model_dump()
+    if hasattr(obj, "dict"):         # pydantic v1
+        return obj.dict()
+    if hasattr(obj, "to_dict"):
+        return obj.to_dict()
+    if hasattr(obj, "__dict__"):
+        return dict(obj.__dict__)
+    return obj
 
-    if intake_data.get("payment_mentions"):
-        agents_to_run.append("payment")
 
-    return agents_to_run
+# -----------------------
+# Planner
+# -----------------------
+def run_planner(intake_schema):
 
+    intake_data = _to_dict(intake_schema)
 
-def run_planner(intake_schema) -> Dict[str, Any]:
-    if hasattr(intake_schema, "to_dict"):
-        intake_data = intake_schema.to_dict()
-    elif hasattr(intake_schema, "dict"):
-        intake_data = intake_schema.dict()
-    else:
-        intake_data = intake_schema
+    results = {}
 
-    selected_agents = decide_agents(intake_data)
-    results: Dict[str, Any] = {}
+    # ALWAYS keep raw text for scoring
+    results["raw_text"] = (
+        intake_data.get("raw_text", "")
+        or intake_data.get("clean_text", "")
+        or ""
+    )
 
-    if "company" in selected_agents:
-        results["company"] = company_agent.run_company_agent(intake_data)
+    results["company"] = company_agent.run_company_agent(intake_data)
+    results["payment"] = payment_agent.run_payment_agent(intake_data)
+    results["behavior"] = behavior_agent.run_behavior_agent(intake_data)
 
-    if "payment" in selected_agents:
-        results["payment"] = payment_agent.run_payment_agent(intake_data)
-
-    if "behavior" in selected_agents:
-        results["behavior"] = behavior_agent.run_behavior_agent(intake_data)
-
-    if "ml" in selected_agents:
-        results["ml"] = ml_agent.run_ml_analysis(intake_data)
+    text = results["raw_text"]
+    results["ml"] = MLAgent().run(text)
 
     return results

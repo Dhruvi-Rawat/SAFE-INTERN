@@ -1,200 +1,134 @@
 # utils/risk_engine.py
-"""
-Risk engine for SAFE-INTERN.
 
-Responsibilities:
-- Combine signals from all agents
-- Produce a final advisory risk score (0–100)
-- Assign a risk category (Low / Caution / High Indicators)
-- Provide transparent breakdown
-
-NO accusations
-NO absolute claims
-NO data storage
-"""
-
-from typing import Dict, Any, Tuple, List
-
-
-# ---------- CONFIGURATION ----------
-
-AGENT_MAX_SCORES = {
-    "company": 30,
-    "payment": 30,
-    "behavior": 20,
-    "ml": 20
-}
-
-RISK_CATEGORIES = [
-    (30, "Low Risk Indicators"),
-    (60, "Caution Advised"),
-    (100, "High Risk Indicators")
-]
-
-# These rules MUST match actual agent observations
-COMPANY_RULES = {
-    "not reachable": 10,
-    "does not use https": 5,
-    "free email domain": 10,
-    "does not match website domain": 5
-}
-
-PAYMENT_RULES = {
-    "payment appears to be requested before": 15,
-    "specific payment amount": 10,
-    "high-pressure language": 5
-}
-
-BEHAVIOR_RULES = {
-    "urgency_terms": 10,
-    "manipulation_terms": 10
-}
-
-ML_SCORES = {
-    "low": 5,
-    "medium": 12,
-    "high": 20
-}
-
-
-# ---------- SCORING FUNCTIONS ----------
-
-def score_company(result: Dict[str, Any]) -> Tuple[int, List[str]]:
+def calculate_risk(agent_results: dict) -> dict:
     score = 0
-    reasons = []
-
-    for obs in result.get("observations", []):
-        obs_lower = obs.lower()
-        for rule, points in COMPANY_RULES.items():
-            if rule in obs_lower:
-                score += points
-                reasons.append(f"{rule} (+{points})")
-
-    return min(score, AGENT_MAX_SCORES["company"]), reasons
-
-
-def score_payment(result: Dict[str, Any]) -> Tuple[int, List[str]]:
-    score = 0
-    reasons = []
-
-    for obs in result.get("observations", []):
-        obs_lower = obs.lower()
-        for rule, points in PAYMENT_RULES.items():
-            if rule in obs_lower:
-                score += points
-                reasons.append(f"{rule} (+{points})")
-
-    return min(score, AGENT_MAX_SCORES["payment"]), reasons
-
-
-def score_behavior(result: Dict[str, Any]) -> Tuple[int, List[str]]:
-    score = 0
-    reasons = []
-
-    if result.get("urgency_terms"):
-        score += BEHAVIOR_RULES["urgency_terms"]
-        reasons.append("urgency language detected")
-
-    if result.get("manipulation_terms"):
-        score += BEHAVIOR_RULES["manipulation_terms"]
-        reasons.append("manipulation phrases detected")
-
-    return min(score, AGENT_MAX_SCORES["behavior"]), reasons
-
-
-def score_ml(ml_result: Dict[str, Any]) -> Tuple[int, List[str]]:
-    """
-    Score ML signal using probability and confidence.
-
-    ML is advisory and capped.
-    """
-    if not ml_result or not ml_result.get("ml_used"):
-        return 0, ["ML analysis not performed"]
-
-    risk_level = ml_result.get("risk_level", "low")
-    probability = ml_result.get("risk_probability", 0.0)
-
-    # Base score by level
-    base_scores = {
-        "low": 5,
-        "medium": 12,
-        "high": 20
-    }
-
-    base = base_scores.get(risk_level, 0)
-
-    # Confidence = distance from 0.5
-    confidence = abs(probability - 0.5) * 2  # range 0–1
-
-    # Final ML score
-    score = int(round(base * confidence))
-    score = min(score, AGENT_MAX_SCORES["ml"])
-
-    explanation = [
-        f"ML language analysis indicates {risk_level} risk "
-        f"(probability: {probability}, confidence: {round(confidence, 2)}) (+{score})"
-    ]
-
-    return score, explanation
-
-
-# ---------- CATEGORY ----------
-
-def get_risk_category(score: int) -> str:
-    for threshold, label in RISK_CATEGORIES:
-        if score < threshold:
-            return label
-    return RISK_CATEGORIES[-1][1]
-
-
-# ---------- MAIN ENGINE ----------
-
-def calculate_risk(agent_results: Dict[str, Any]) -> Dict[str, Any]:
     breakdown = {}
-    details = {}
-    total = 0
 
-    if agent_results.get("company"):
-        s, d = score_company(agent_results["company"])
-        breakdown["company"] = s
-        details["company"] = d
-        total += s
+    raw_text = agent_results.get("raw_text", "") or ""
+    text = raw_text.lower()
+
+    # --------------------
+    # 1) PAYMENT RISK
+    # --------------------
+    payment_obs = agent_results.get("payment", {}).get("observations", [])
+    payment_flag = any(
+        ("payment" in o.lower())
+        or ("fee" in o.lower())
+        or ("upi" in o.lower())
+        or ("amount" in o.lower())
+        for o in payment_obs
+    )
+    financial = 45 if payment_flag else 0
+    score += financial
+    breakdown["financial"] = financial
+
+    # --------------------
+    # 2) BEHAVIOR RISK (hard urgency vs scarcity)
+    # --------------------
+    behavior = agent_results.get("behavior", {})
+
+    # support BOTH schemas (old + new) so your app won’t break
+    hard_urgency = behavior.get("hard_urgency_terms", []) or behavior.get("urgency_terms", [])
+    scarcity = behavior.get("scarcity_terms", [])
+    manipulation = behavior.get("manipulation_terms", [])
+    behavior_obs = behavior.get("observations", [])
+
+    pressure = 0
+    if hard_urgency:
+        pressure += 20          # strong pressure words
+    if scarcity:
+        pressure += 6           # limited seats is mild, not scam by itself
+    if manipulation:
+        pressure += 25
+    if any("no clear interview" in o.lower() for o in behavior_obs):
+        pressure += 10
+
+    pressure = min(45, pressure)
+    score += pressure
+    breakdown["pressure"] = pressure
+
+    # --------------------
+    # 3) COMPANY RISK + TRUST
+    # --------------------
+    company_obs = agent_results.get("company", {}).get("observations", [])
+    company_risk = 0
+    if any(("suspicious" in o.lower()) or ("mismatch" in o.lower()) for o in company_obs):
+        company_risk = 15
+
+    score += company_risk
+    breakdown["company"] = company_risk
+
+    company_trust = agent_results.get("company", {}).get("trust_score", 0)
+    score += company_trust
+    breakdown["company_trust"] = company_trust  # usually negative for trusted domains
+
+    # --------------------
+    # 4) ML RISK (cap it so it can’t dominate)
+    # --------------------
+    ml_prob = agent_results.get("ml", {}).get("ml_probability", 0.0) or 0.0
+    ml_points = int(ml_prob * 20)
+    ml_points = min(15, ml_points)  # ✅ CAP at 15
+    score += ml_points
+    breakdown["ml"] = ml_points
+
+    # --------------------
+    # 5) LEGIT STRUCTURE BONUS (expanded to cover your safe examples)
+    # --------------------
+    structure_bonus = 0
+
+    # interview/process signals
+    if any(k in text for k in [
+        "interview", "technical interview", "hr discussion", "resume screening",
+        "selection process", "screening", "assessment", "shortlisted",
+        "online interaction", "interaction with the founders", "call with founders"
+    ]):
+        structure_bonus += 20  # strong legitimacy structure
+
+    # mentorship / learning signals
+    if any(k in text for k in ["mentor", "mentorship", "hands-on learning", "learning and mentorship"]):
+        structure_bonus += 8
+
+    # stipend is a soft legitimacy signal
+    if "stipend" in text or "₹" in text:
+        # only count stipend if it actually says stipend
+        if "stipend" in text:
+            structure_bonus += 5
+
+    score -= structure_bonus
+    breakdown["structure_bonus"] = -structure_bonus
+
+    # --------------------
+    # 6) TRUST / GREEN SIGNALS (strong)
+    # --------------------
+    trust_bonus = 0
+
+    # strongest green flag
+    if any(k in text for k in ["no fees", "no fee", "no payment", "no charges", "no registration fee"]):
+        trust_bonus += 30
+
+    # official career portal hint
+    if "https://" in text and "careers" in text:
+        trust_bonus += 10
+
+    # email from company domain (not free email) – mild bonus
+    if ("@" in text) and not any(free in text for free in ["@gmail.com", "@yahoo.com", "@outlook.com", "@hotmail.com"]):
+        trust_bonus += 5
+
+    score -= trust_bonus
+    breakdown["trust_bonus"] = -trust_bonus
+
+    # clamp
+    score = max(0, min(score, 100))
+
+    if score >= 70:
+        category = "High Risk"
+    elif score >= 40:
+        category = "Moderate Risk"
     else:
-        breakdown["company"] = 0
-        details["company"] = ["not analyzed"]
-
-    if agent_results.get("payment"):
-        s, d = score_payment(agent_results["payment"])
-        breakdown["payment"] = s
-        details["payment"] = d
-        total += s
-    else:
-        breakdown["payment"] = 0
-        details["payment"] = ["not analyzed"]
-
-    if agent_results.get("behavior"):
-        s, d = score_behavior(agent_results["behavior"])
-        breakdown["behavior"] = s
-        details["behavior"] = d
-        total += s
-    else:
-        breakdown["behavior"] = 0
-        details["behavior"] = ["not analyzed"]
-
-    if agent_results.get("ml"):
-        s, d = score_ml(agent_results["ml"])
-        breakdown["ml"] = s
-        details["ml"] = d
-        total += s
-    else:
-        breakdown["ml"] = 0
-        details["ml"] = ["not analyzed"]
-
-    total = min(total, 100)
+        category = "Low Risk"
 
     return {
-        "risk_score": total,
-        "risk_category": get_risk_category(total),
-        "breakdown": breakdown,
-        "details": details
+        "risk_score": score,
+        "risk_category": category,
+        "breakdown": breakdown
     }
